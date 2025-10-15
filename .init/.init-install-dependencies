@@ -1,0 +1,4 @@
+{
+    "command": "npm install",
+    "working_directory": "/home/kavia/workspace/code-generation/gemini-chatbot-platform-149385-149395/chatbot_frontend"
+}
