@@ -4,26 +4,56 @@
 
 /**
  * Resolve the base API URL from environment variables or fallback.
- * - Uses process.env.REACT_APP_API_BASE_URL if provided.
- * - Otherwise defaults to window.location.origin but forces port 3001.
+ * Priority:
+ * 1) If REACT_APP_USE_PROXY === 'true', use relative '' so fetch('/api/...') hits CRA proxy (avoids CORS in dev).
+ * 2) Use REACT_APP_API_BASE_URL if provided.
+ * 3) Default to current origin but force port 3001 (backend default).
  */
 function resolveBaseURL() {
+  const useProxy = String(process.env.REACT_APP_USE_PROXY || '').toLowerCase() === 'true';
+  if (useProxy) {
+    return ''; // relative requests -> CRA devServer proxy
+  }
+
   const envBase = process.env.REACT_APP_API_BASE_URL;
   if (envBase && typeof envBase === 'string' && envBase.trim().length > 0) {
-    return envBase.trim().replace(/\/+$/, '');
+    return envBase.trim().replace(/\/*$/, '');
   }
+
   try {
     const current = new URL(window.location.origin);
     current.port = '3001';
-    // URL.origin will include the port when non-default
     return current.origin;
   } catch {
-    // Absolute last-resort fallback
     return 'http://localhost:3001';
   }
 }
 
 const baseURL = resolveBaseURL();
+
+/**
+ * Build a full URL by joining baseURL and path safely.
+ */
+function buildUrl(path) {
+  if (!path.startsWith('/')) path = `/${path}`;
+  if (!baseURL) return path; // proxy mode -> relative path
+  return `${baseURL}${path}`;
+}
+
+/**
+ * Convert a low-level error into a more helpful message for users.
+ */
+function toFriendlyError(err, requestUrl) {
+  // Network or CORS issues surface as TypeError('Failed to fetch') in browsers
+  const msg = err?.message || String(err);
+  if (/Failed to fetch/i.test(msg) || /NetworkError/i.test(msg) || /TypeError/i.test(msg)) {
+    const hint = baseURL
+      ? `Check that the backend is running and reachable at ${baseURL}, that it exposes the expected path, and that CORS is configured if not using the dev proxy.`
+      : `Using dev proxy. Ensure 'npm start' is running and package.json has proxy pointing to the backend (default http://localhost:3001).`;
+    return new Error(`Network error while calling ${requestUrl}: ${msg}. ${hint}`);
+  }
+  return new Error(msg);
+}
 
 // PUBLIC_INTERFACE
 export async function chat(message) {
@@ -37,11 +67,20 @@ export async function chat(message) {
     throw new Error('Message must be a non-empty string');
   }
 
-  const response = await fetch(`${baseURL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  });
+  const url = buildUrl('/api/chat');
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // For credentialed sessions, uncomment next line and configure backend CORS accordingly:
+      // credentials: 'include',
+      body: JSON.stringify({ message }),
+    });
+  } catch (err) {
+    throw toFriendlyError(err, url);
+  }
 
   if (!response.ok) {
     let info = '';
