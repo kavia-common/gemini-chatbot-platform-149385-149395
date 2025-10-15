@@ -18,6 +18,11 @@ In the project directory, you can run:
 Runs the app in development mode.\
 Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
+If you see "Invalid Host header" in a cloud/preview URL, create a `.env` from `.env.example` and ensure:
+- HOST=0.0.0.0
+- PORT=3000
+This allows the dev server to accept the preview host. The proxy to the backend at port 3001 is already configured in package.json.
+
 ### Backend Connectivity
 
 The frontend talks to a Flask backend that should be running on port `3001`. There are two supported ways to connect:
